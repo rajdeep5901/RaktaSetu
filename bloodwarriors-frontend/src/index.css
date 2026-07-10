@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   RaktaSetu — Light, high-trust marketplace design system
+   (Airbnb pivot — see CLAUDE.md for tokens)
+   ============================================================ */
+
+/* --- Google Fonts are loaded in index.html --- */
+
+@layer base {
+
+  *,
+  *::before,
+  *::after {
+    scrollbar-width: thin;
+    scrollbar-color: #c1c1c1 #f2f2f2;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #f2f2f2;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+
+  ::selection {
+    background: rgba(255, 56, 92, 0.15);
+    color: #222222;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: #f9fafb;      /* gray-50 */
+    color: #0F172A;           /* slate-body */
+    font-family: 'Inter', -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+    min-height: 100vh;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+
+  /* ── Card — "Red Love": boxed, crimson top accent ──── */
+  .rs-card {
+    @apply bg-white rounded-md border-t-4 border-ruby-main shadow-lg transition-shadow duration-200 hover:shadow-xl;
+  }
+
+  /* ── Input — boxed field, crimson focus ────────────── */
+  .rs-input {
+    @apply h-12 w-full rounded-md border border-gray-300 bg-white px-5 text-slate-body placeholder-gray-400 transition-colors duration-150 focus:border-ruby-main focus:ring-1 focus:ring-ruby-main focus:outline-none;
+  }
+
+  /* ── Primary button — crimson gradient, bold uppercase */
+  .rs-btn-primary {
+    @apply inline-flex h-12 items-center justify-center rounded-md bg-gradient-to-r from-ruby-dark to-ruby-main px-6 font-bold uppercase tracking-wide text-white transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
+  }
+
+  /* ── Secondary button — slate block, uppercase ─────── */
+  .rs-btn-secondary {
+    @apply inline-flex h-12 items-center justify-center rounded-md bg-slate-nav px-6 font-bold uppercase tracking-wide text-white transition-all duration-150 hover:brightness-125 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  /* ── Urgency / status badges ──────────────────────── */
+  .rs-badge-critical {
+    @apply inline-flex items-center rounded-full border border-hackberry/30 bg-hackberry/10 px-3 py-1 text-xs font-semibold text-hackberry;
+  }
+
+  .rs-badge-moderate {
+    @apply inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700;
+  }
+
+  .rs-badge-low {
+    @apply inline-flex items-center rounded-full border border-babu/30 bg-babu/10 px-3 py-1 text-xs font-semibold text-babu;
+  }
+
+  /* ── Section header ───────────────────────────────── */
+  .rs-section-header {
+    @apply text-xl font-bold text-ink;
+  }
+
+  /* ── Data cell (mono, clean/light) ────────────────── */
+  .data-cell {
+    @apply border-b border-hairline-soft px-3 py-2.5 font-mono text-sm text-body;
+  }
+
+  /* ── Toast (light) ────────────────────────────────── */
+  .toast-container {
+    @apply fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none;
+  }
+
+  .toast {
+    @apply pointer-events-auto flex min-w-[320px] max-w-[420px] items-start gap-3 rounded-md border border-hairline bg-cloud px-4 py-3 shadow-md animate-slide-in-right;
+  }
+
+  .toast-exit {
+    @apply animate-slide-out-right;
+  }
+
+  /* ── Consent revoked row (keeps blur/opacity logic) ─ */
+  .consent-revoked {
+    @apply opacity-25 blur-[1px] pointer-events-none select-none;
+    transition: opacity 0.6s ease-out, filter 0.6s ease-out;
+  }
+}

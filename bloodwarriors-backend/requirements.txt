@@ -1,0 +1,32 @@
+# ============================================================
+# RaktaSetu AI -- Python Dependencies
+# ============================================================
+# Install with:  pip install -r requirements.txt
+# Tested on Python 3.11+ (Ubuntu 22.04 / Windows 11)
+# ============================================================
+
+# --- Web Framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# --- Data & ML ---
+pandas==2.2.3
+scikit-learn==1.6.1
+lightgbm==4.5.0
+joblib==1.4.2
+
+# --- AI Engine (Groq Free Tier -- replaces boto3/Bedrock) ---
+# NOTE: 0.9.0 breaks on httpx>=0.28 ("proxies" kwarg removed), which silently
+# forces every triage/chat call into the mock fallback. Pinned to a compatible range.
+groq>=0.11,<1.0
+
+# --- Testing & HTTP ---
+requests==2.32.3
+
+# --- Database ---
+sqlalchemy==2.0.36
+kuzu==0.8.2
+
+# --- Config & Utilities ---
+python-dotenv==1.0.1
+pydantic==2.10.5

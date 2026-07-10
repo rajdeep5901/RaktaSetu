@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------------------------------------------------------
+# Environment / secrets  (backend + frontend)
+# ---------------------------------------------------------------------------
+.env
+*/.env
+**/.env
+.env.local
+.env.*.local
+# Keep the template
+!.env.example
+
+# ---------------------------------------------------------------------------
+# Node / frontend
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---------------------------------------------------------------------------
+# Databases / generated data  (match at any depth, incl. backend subdir)
+# ---------------------------------------------------------------------------
+**/data/raktasetu.db
+**/data/raktasetu.db-wal
+**/data/raktasetu.db-shm
+**/data/raktasetu.db.seedbak
+**/data/kuzu_db/
+# SQLite WAL/SHM artifacts anywhere
+*.db-wal
+*.db-shm
+
+# ---------------------------------------------------------------------------
+# Editors / IDEs
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# ---------------------------------------------------------------------------
+# Explicitly tracked (do NOT ignore)
+# ---------------------------------------------------------------------------
+!.env.example
+!Dataset.csv
+!donor_rf_model.joblib
+!requirements.txt

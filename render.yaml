@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: raktasetu-backend
+    runtime: python
+    region: oregon
+    rootDir: bloodwarriors-backend
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: USE_MOCK_AI
+        value: "True"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SQLITE_DB_PATH
+        value: "data/raktasetu.db"
+      - key: KUZU_DB_PATH
+        value: "data/kuzu_db"
+    disk:
+      name: raktasetu-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
