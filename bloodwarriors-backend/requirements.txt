@@ -26,7 +26,6 @@ requests==2.32.3
 # --- Database ---
 sqlalchemy==2.0.36
 psycopg2-binary>=2.9.9
-kuzu==0.8.2
 
 # --- Config & Utilities ---
 python-dotenv==1.0.1

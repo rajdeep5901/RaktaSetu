@@ -297,8 +297,8 @@ export default function Overview({ toast }) {
             <div>
               <div className="text-sm font-semibold text-amber-700">Backend offline</div>
               <p className="text-sm text-body mt-1 leading-relaxed">
-                The FastAPI backend at <code className="font-mono text-amber-700">localhost:8000</code> isn&apos;t
-                reachable right now. Panels stay available with the last known data. Start the backend with{' '}
+                The RaktaSetu backend API isn&apos;t reachable right now. Panels stay available with the last known
+                data. Start the backend with{' '}
                 <code className="font-mono text-amber-700">uvicorn app.main:app --reload</code> to restore live
                 connectivity.
               </p>

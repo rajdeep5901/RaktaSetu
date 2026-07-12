@@ -265,7 +265,7 @@ def init_sqlite_db():
     Safe to call multiple times (idempotent).
     """
     Base.metadata.create_all(bind=engine)
-    print(f"[OK] SQLite database initialized at: {SQLITE_DB_PATH}")
+    print(f"[OK] Database initialized.")
 
 
 def get_db() -> Session:
