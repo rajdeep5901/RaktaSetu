@@ -9,9 +9,11 @@ Three core AI functions powered by Groq (llama3-8b-8192):
 2. generate_outreach()  -- Personalized 2-sentence donor mobilization
 3. rag_chat()           -- RAG chat with medical intent guardrail
 
-CRITICAL: USE_MOCK_AI toggle
-    - True  = Fully offline, deterministic responses (no API key needed)
-    - False = Live Groq API calls (free tier, requires GROQ_API_KEY)
+CRITICAL: mode resolution
+    - A valid GROQ_API_KEY AUTOMATICALLY forces LIVE mode, regardless of the
+      USE_MOCK_AI env var. Mock mode only applies when no usable key is present.
+    - USE_MOCK_AI=True (or unset) + no valid key = offline deterministic responses.
+    - USE_MOCK_AI=False = live Groq calls even without a key (will error/fallback).
 
 Every live Groq invocation is marked with:
     # >>> GROQ API INVOCATION <<<
@@ -30,9 +32,34 @@ load_dotenv()
 # ============================================================
 # Configuration
 # ============================================================
-USE_MOCK_AI = os.getenv("USE_MOCK_AI", "True").lower() in ("true", "1", "yes")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.1-8b-instant"  # Free tier model on Groq
+
+# Placeholder shipped in .env.example — treated as "no key".
+_GROQ_KEY_PLACEHOLDER = "your_free_groq_api_key_here"
+
+
+def _has_valid_groq_key(key: str) -> bool:
+    """A GROQ_API_KEY is usable if it's non-empty and not the .env placeholder.
+
+    Groq keys are issued with a 'gsk_' prefix; we accept anything that isn't
+    blank or the shipped placeholder so a legitimately-formatted key always
+    forces LIVE mode.
+    """
+    if not key:
+        return False
+    return key.strip().lower() != _GROQ_KEY_PLACEHOLDER
+
+
+# --- MODE RESOLUTION ---
+# A valid GROQ_API_KEY AUTOMATICALLY disables mock mode, regardless of the
+# USE_MOCK_AI env var. Mock mode only stays on when there is no usable key
+# (either USE_MOCK_AI opted in, or there's simply nothing to call Groq with).
+_USE_MOCK_AI_ENV = os.getenv("USE_MOCK_AI", "True").lower() in ("true", "1", "yes")
+_HAS_VALID_GROQ_KEY = _has_valid_groq_key(GROQ_API_KEY)
+USE_MOCK_AI = _USE_MOCK_AI_ENV and not _HAS_VALID_GROQ_KEY
+if _USE_MOCK_AI_ENV and _HAS_VALID_GROQ_KEY:
+    print("[AI] USE_MOCK_AI=True was overridden -> LIVE mode (valid GROQ_API_KEY detected).")
 
 # Lazy-initialized Groq client
 _groq_client = None
@@ -665,9 +692,13 @@ def _mock_admin_chat(msg_lower: str, live_donor_count: Optional[int] = None) -> 
 # Module Info
 # ============================================================
 if USE_MOCK_AI:
-    print("[MOCK] AI client running in MOCK mode (USE_MOCK_AI=True)")
+    print("[MOCK] AI client running in MOCK mode (no valid GROQ_API_KEY found)")
+    print(f"   USE_MOCK_AI env={_USE_MOCK_AI_ENV}, valid GROQ_API_KEY={_HAS_VALID_GROQ_KEY}")
     print("   All AI responses are deterministic and require no API key.")
+    print("   Set a valid GROQ_API_KEY to automatically switch to LIVE Groq responses.")
 else:
-    print(f"[LIVE] Groq AI client configured for LIVE mode (model={GROQ_MODEL})")
-    print(f"   API Key: {'configured' if GROQ_API_KEY and GROQ_API_KEY != 'your_free_groq_api_key_here' else 'NOT SET -- set GROQ_API_KEY in .env'}")
+    reason = "GROQ_API_KEY present -> mock auto-disabled" if _USE_MOCK_AI_ENV else "USE_MOCK_AI=False"
+    print(f"[LIVE] Groq AI client running in LIVE mode (model={GROQ_MODEL})")
+    print(f"   Reason: {reason}")
+    print(f"   API Key: {'configured' if _HAS_VALID_GROQ_KEY else 'NOT SET -- set GROQ_API_KEY in .env'}")
     print(f"   Free tier: 30 requests/minute, 14,400 requests/day")

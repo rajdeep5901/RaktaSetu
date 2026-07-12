@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Activity,
   Heart,
@@ -21,6 +21,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import api from '../lib/api';
+import { onDonorCreated } from '../lib/donorEvents';
 
 /* ============================================================
    Overview — NGO Command Center Dashboard (light enterprise)
@@ -77,6 +78,17 @@ export default function Overview({ toast }) {
     return () => clearInterval(interval);
   }, []);
 
+  // Reusable donor-count fetch — called on mount and whenever a new donor is
+  // registered, so the "Registered Donors" stat stays live without a refresh.
+  const loadDonorCount = useCallback(async () => {
+    try {
+      const res = await api.get('/donors');
+      setDonorCount(res.data.total ?? 0);
+    } catch {
+      setDonorCount(null);
+    }
+  }, []);
+
   // Health check + donor count
   useEffect(() => {
     let cancelled = false;
@@ -101,18 +113,24 @@ export default function Overview({ toast }) {
         }
       }
     };
-    const loadDonors = async () => {
-      try {
-        const res = await api.get('/donors');
-        if (!cancelled) setDonorCount(res.data.total ?? 0);
-      } catch {
-        if (!cancelled) setDonorCount(null);
-      }
-    };
     check();
-    loadDonors();
+    loadDonorCount();
     return () => { cancelled = true; };
-  }, []);
+  }, [loadDonorCount]);
+
+  // Live sync: refresh the donor count when a donor is registered (this tab or
+  // another) and when the operator returns to this tab.
+  useEffect(() => {
+    const unsubscribe = onDonorCreated(() => loadDonorCount());
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadDonorCount();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [loadDonorCount]);
 
   const isOnline = health?.status === 'healthy';
 

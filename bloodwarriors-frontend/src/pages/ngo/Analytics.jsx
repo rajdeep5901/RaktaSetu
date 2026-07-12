@@ -32,6 +32,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import api from '../../lib/api';
+import { onDonorCreated } from '../../lib/donorEvents';
 
 /* ============================================================
    Analytics — NGO Deep Data Analysis
@@ -89,6 +90,18 @@ export default function Analytics({ toast }) {
 
   useEffect(() => {
     loadAnalytics();
+    // Live sync: re-fetch immediately when a donor is registered (this tab or
+    // another), and when the operator returns to this tab, so the charts never
+    // go stale without a manual refresh.
+    const unsubscribe = onDonorCreated(() => loadAnalytics());
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadAnalytics();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

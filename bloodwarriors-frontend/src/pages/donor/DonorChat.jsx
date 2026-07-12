@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import api from '../../lib/api';
 import { generateEncryptedUserId } from '../../lib/utils';
+import { emitDonorCreated } from '../../lib/donorEvents';
 import ParticleGraph from '../../components/ParticleGraph';
 
 /* ============================================================
@@ -411,6 +412,9 @@ export default function DonorChat({ toast }) {
       }, 1200);
 
       toast.addToast(`Registration complete — Donor ID #${res.data.donor_id} created.`, 'success');
+      // Notify any live NGO dashboards (this or another tab) to re-fetch so the
+      // new donor shows in analytics/overview without a manual page refresh.
+      emitDonorCreated({ donorId: res.data.donor_id, bloodGroup, source: 'donor-chat' });
     } catch {
       // Offline fallback — still show the ticket with local data
       const ticketData = {

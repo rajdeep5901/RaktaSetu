@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import api from '../../lib/api';
 import { generateEncryptedUserId } from '../../lib/utils';
+import { emitDonorCreated } from '../../lib/donorEvents';
 import ParticleGraph from '../../components/ParticleGraph';
 
 /* ============================================================
@@ -111,14 +112,31 @@ export default function Register({ toast }) {
       await api.post('/donors', payload);
       setTicket(buildTicket(payload, encryptedUserId));
       toast.addToast('Registration successful — donor is now eligible for matching.', 'success');
-    } catch {
-      // Graceful offline: still generate the ticket for evaluation
-      setTicket(buildTicket(payload, encryptedUserId));
-      toast.addToast(
-        'Registered locally — will sync when the backend is online.',
-        'system',
-        6000,
-      );
+      // Notify any live NGO dashboards (this or another tab) to re-fetch so the
+      // new donor shows in analytics/overview without a manual page refresh.
+      emitDonorCreated({ bloodGroup: form.bloodGroup, source: 'register-form' });
+    } catch (err) {
+      // Distinguish a genuine backend rejection (the write did NOT persist) from
+      // the backend simply being unreachable. Only the latter is treated as a
+      // graceful offline case — a real error must not masquerade as success.
+      if (err?.response) {
+        const detail = err.response.data?.detail;
+        toast.addToast(
+          typeof detail === 'string'
+            ? `Registration failed: ${detail}`
+            : 'Registration failed — the server rejected the submission. Please try again.',
+          'warning',
+          6000,
+        );
+      } else {
+        // No response = network/offline: keep the demo-friendly local ticket.
+        setTicket(buildTicket(payload, encryptedUserId));
+        toast.addToast(
+          'Registered locally — will sync when the backend is online.',
+          'system',
+          6000,
+        );
+      }
     } finally {
       setLoading(false);
     }
