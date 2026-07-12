@@ -119,32 +119,32 @@ class Donor(Base):
     bridge_id = Column(String(128), nullable=True)
 
     # --- Role & Status ---
-    role = Column(String(50), nullable=True)             # Emergency Donor, Bridge Donor, Volunteer
+    role = Column(String(100), nullable=True)             # Emergency Donor, Bridge Donor, Volunteer
     role_status = Column(Boolean, nullable=True)          # true/false
     bridge_status = Column(Boolean, nullable=True)        # true/false
-    status = Column(String(20), nullable=True)            # active/inactive
+    status = Column(String(100), nullable=True)            # active/inactive
 
     # --- Blood & Demographics ---
-    blood_group = Column(String(20), index=True, nullable=True)  # e.g. "O Positive"
-    gender = Column(String(10), nullable=True)            # Kept in DB for display, not ML
+    blood_group = Column(String(100), index=True, nullable=True)  # e.g. "O Positive"
+    gender = Column(String(100), nullable=True)            # Kept in DB for display, not ML
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
 
     # --- Bridge (Patient) Info ---
-    bridge_gender = Column(String(10), nullable=True)
-    bridge_blood_group = Column(String(20), nullable=True)
+    bridge_gender = Column(String(100), nullable=True)
+    bridge_blood_group = Column(String(100), nullable=True)
     quantity_required = Column(Integer, nullable=True)
     last_transfusion_date = Column(DateTime, nullable=True)
     expected_next_transfusion_date = Column(DateTime, nullable=True)
 
     # --- Donor History ---
     registration_date = Column(DateTime, nullable=True)
-    donor_type = Column(String(30), nullable=True)       # One-Time, Regular, Other
+    donor_type = Column(String(100), nullable=True)       # One-Time, Regular, Other
     last_contacted_date = Column(DateTime, nullable=True)
     last_donation_date = Column(DateTime, nullable=True)
     next_eligible_date = Column(DateTime, nullable=True)
     donations_till_date = Column(Integer, nullable=True)
-    eligibility_status = Column(String(20), nullable=True)  # eligible/not eligible
+    eligibility_status = Column(String(100), nullable=True)  # eligible/not eligible
     cycle_of_donations = Column(Integer, nullable=True)     # days
     total_calls = Column(Integer, nullable=True)
     frequency_in_days = Column(Integer, nullable=True)
@@ -152,7 +152,7 @@ class Donor(Base):
     donated_earlier = Column(Boolean, nullable=True)
     last_bridge_donation_date = Column(DateTime, nullable=True)
     calls_to_donations_ratio = Column(Float, nullable=True)
-    user_donation_active_status = Column(String(20), nullable=True)  # Active/Inactive
+    user_donation_active_status = Column(String(100), nullable=True)  # Active/Inactive
     inactive_trigger_comment = Column(Text, nullable=True)
 
     # --- CONSENT LAYER (CRITICAL for judging criteria) ---
@@ -167,7 +167,7 @@ class Donor(Base):
     # --- Contact Info ---
     # Phone number for WhatsApp dispatch (+91 format)
     # Nullable: CSV-imported donors won't have this field
-    phone_number = Column(String(20), nullable=True)
+    phone_number = Column(String(100), nullable=True)
 
     def __repr__(self):
         return f"<Donor(id={self.id}, user_id={self.user_id[:16]}..., blood_group={self.blood_group}, consent={self.consent_given})>"
@@ -183,8 +183,8 @@ class TriageRequest(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     patient_description = Column(Text, nullable=False)
-    blood_group_needed = Column(String(20), nullable=True)
-    urgency = Column(String(20), nullable=True)          # CRITICAL, MODERATE, LOW
+    blood_group_needed = Column(String(100), nullable=True)
+    urgency = Column(String(100), nullable=True)          # CRITICAL, MODERATE, LOW
     ai_reasoning = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -199,8 +199,8 @@ class MatchLog(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     triage_id = Column(Integer, nullable=True)
-    blood_group = Column(String(20), nullable=False)
-    urgency = Column(String(20), nullable=False)
+    blood_group = Column(String(100), nullable=False)
+    urgency = Column(String(100), nullable=False)
     matched_donor_ids = Column(Text, nullable=True)      # JSON list of donor IDs
     scores = Column(Text, nullable=True)                  # JSON list of scores
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -215,10 +215,10 @@ class FeedbackLog(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(128), nullable=True)
-    user_role = Column(String(20), nullable=True)        # donor / patient / coordinator
+    user_role = Column(String(100), nullable=True)        # donor / patient / coordinator
     rating = Column(Integer, nullable=True)              # 1-5
     comment = Column(Text, nullable=True)
-    endpoint_used = Column(String(50), nullable=True)    # which endpoint triggered this
+    endpoint_used = Column(String(100), nullable=True)    # which endpoint triggered this
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -248,7 +248,7 @@ class ChatMessage(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     message_id = Column(String(128), unique=True, index=True, nullable=False)
     session_id = Column(String(128), index=True, nullable=False)
-    role = Column(String(20), nullable=False)  # "user" or "assistant"
+    role = Column(String(100), nullable=False)  # "user" or "assistant"
     content = Column(Text, nullable=False)
     message_order = Column(Integer, nullable=False, default=0)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
