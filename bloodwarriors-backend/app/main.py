@@ -72,10 +72,19 @@ app = FastAPI(
     redoc_url="/redoc",     # ReDoc alternative
 )
 
-# Full CORS (required for hackathon demo with any frontend)
+# CORS configuration.
+# Production: set ALLOWED_ORIGINS to a comma-separated list of allowed
+# frontend origins (e.g. "https://app.example.com,https://admin.example.com").
+# Development: leave it unset to fall back to "*" so local frontends work.
+_allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if _allowed_origins_env:
+    ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_env.split(",") if origin.strip()]
+else:
+    ALLOWED_ORIGINS = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -47,30 +47,57 @@ load_dotenv()
 # ============================================================
 # SQLAlchemy Configuration
 # ============================================================
-SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "data/raktasetu.db")
-# Ensure the data directory exists
-os.makedirs(os.path.dirname(SQLITE_DB_PATH) if os.path.dirname(SQLITE_DB_PATH) else ".", exist_ok=True)
-print(f"[DB] SQLite path resolved to: {os.path.abspath(SQLITE_DB_PATH)}")
+# DATABASE_URL-first: when set (e.g. a Neon `postgresql://...` string), use it
+# directly. Otherwise fall back to local SQLite for development.
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-DATABASE_URL = f"sqlite:///{SQLITE_DB_PATH}"
+if DATABASE_URL:
+    # --- Remote PostgreSQL (Neon) ---
+    IS_SQLITE = False
+    # SQLITE_DB_PATH is unused in this mode, but kept defined so downstream
+    # references (e.g. init/logging) don't break.
+    SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "data/raktasetu.db")
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Required for SQLite + FastAPI
-    echo=False,  # Set True for SQL debug logging
-)
+    from urllib.parse import urlparse
+
+    _db_host = urlparse(DATABASE_URL).hostname or "<unknown>"
+    print(f"[DB] Using PostgreSQL: {_db_host}")
+
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,  # Recover from Neon closing idle connections
+        echo=False,          # Set True for SQL debug logging
+    )
+else:
+    # --- Local SQLite (development fallback) ---
+    IS_SQLITE = True
+    SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "data/raktasetu.db")
+    # Ensure the data directory exists
+    os.makedirs(os.path.dirname(SQLITE_DB_PATH) if os.path.dirname(SQLITE_DB_PATH) else ".", exist_ok=True)
+
+    DATABASE_URL = f"sqlite:///{SQLITE_DB_PATH}"
+    print(f"[DB] Using SQLite: {os.path.abspath(SQLITE_DB_PATH)}")
+
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},  # Required for SQLite + FastAPI
+        echo=False,  # Set True for SQL debug logging
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-# Enable WAL mode for better concurrent read performance on SQLite
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+# Enable WAL mode for better concurrent read performance on SQLite.
+# Only registered for SQLite — these PRAGMAs are SQLite-specific.
+if IS_SQLITE:
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 # ============================================================
@@ -193,6 +220,38 @@ class FeedbackLog(Base):
     comment = Column(Text, nullable=True)
     endpoint_used = Column(String(50), nullable=True)    # which endpoint triggered this
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class ChatSession(Base):
+    """
+    Chat session metadata. One row per conversation session.
+    Migrated from KùzuDB to SQLAlchemy (Postgres/SQLite) for
+    zero-managed-infrastructure conversational memory.
+    """
+
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(128), unique=True, index=True, nullable=False)
+    user_id = Column(String(128), nullable=True)
+    started_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class ChatMessage(Base):
+    """
+    Individual chat messages belonging to a ChatSession.
+    Ordered via `message_order` for chronological reconstruction.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    message_id = Column(String(128), unique=True, index=True, nullable=False)
+    session_id = Column(String(128), index=True, nullable=False)
+    role = Column(String(20), nullable=False)  # "user" or "assistant"
+    content = Column(Text, nullable=False)
+    message_order = Column(Integer, nullable=False, default=0)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 # ============================================================
@@ -332,10 +391,11 @@ def _init_kuzu_schema(conn):
     print("[OK] KuzuDB schema initialized (7 tables)")
 
 
-def store_chat_message(session_id: str, user_id: str, role: str, content: str):
+def _kuzu_store_chat_message(session_id: str, user_id: str, role: str, content: str):
     """
-    Store a chat message in the KùzuDB graph for RAG context.
-    Creates the session node if it doesn't exist.
+    [DEPRECATED — KùzuDB path] Store a chat message in the KùzuDB graph.
+    Retained for reference only; the active implementation is the
+    SQLAlchemy-backed `store_chat_message` below.
     """
     conn = get_kuzu_connection()
     if conn is None:
@@ -386,10 +446,11 @@ def store_chat_message(session_id: str, user_id: str, role: str, content: str):
         pass
 
 
-def get_chat_history(session_id: str, limit: int = 10) -> list[dict]:
+def _kuzu_get_chat_history(session_id: str, limit: int = 10) -> list[dict]:
     """
-    Retrieve recent chat messages for a session from KùzuDB.
-    Returns a list of {role, content, timestamp} dicts.
+    [DEPRECATED — KùzuDB path] Retrieve recent chat messages from KùzuDB.
+    Retained for reference only; the active implementation is the
+    SQLAlchemy-backed `get_chat_history` below.
     """
     conn = get_kuzu_connection()
     if conn is None:
@@ -413,6 +474,93 @@ def get_chat_history(session_id: str, limit: int = 10) -> list[dict]:
         return list(reversed(messages))
     except Exception:
         return []
+
+
+# ============================================================
+# Chat Persistence (SQLAlchemy — active implementation)
+# ============================================================
+# Chat history is stored in the relational DB (Postgres in production,
+# SQLite in dev) rather than KùzuDB. The public signatures below are
+# unchanged so callers in ai_client.py require no modification.
+
+
+def store_chat_message(session_id: str, user_id: str, role: str, content: str):
+    """
+    Persist a chat message to the relational DB.
+
+    - Upserts the ChatSession row for `session_id`.
+    - Creates a ChatMessage with a uuid4 `message_id`.
+    - Computes `message_order` from the count of existing messages
+      for the session.
+    """
+    import uuid
+
+    db = SessionLocal()
+    try:
+        # Upsert the session
+        session = (
+            db.query(ChatSession)
+            .filter(ChatSession.session_id == session_id)
+            .first()
+        )
+        if session is None:
+            session = ChatSession(session_id=session_id, user_id=user_id)
+            db.add(session)
+        elif user_id and session.user_id != user_id:
+            session.user_id = user_id
+
+        # Determine ordering from existing message count
+        message_order = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session_id)
+            .count()
+        )
+
+        message = ChatMessage(
+            message_id=str(uuid.uuid4()),
+            session_id=session_id,
+            role=role,
+            content=content,
+            message_order=message_order,
+        )
+        db.add(message)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def get_chat_history(session_id: str, limit: int = 10) -> list[dict]:
+    """
+    Retrieve the most recent `limit` messages for a session, returned
+    in chronological (oldest → newest) order.
+
+    Returns a list of {"role", "content", "timestamp"} dicts, where
+    `timestamp` is an ISO-8601 string.
+    """
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.message_order.desc())
+            .limit(limit)
+            .all()
+        )
+        # Rows come newest-first; reverse to chronological order.
+        rows = list(reversed(rows))
+        return [
+            {
+                "role": row.role,
+                "content": row.content,
+                "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
 
 
 # ============================================================

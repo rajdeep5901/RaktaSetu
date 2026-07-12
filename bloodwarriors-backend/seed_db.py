@@ -3,9 +3,14 @@
 ============================================================
 RaktaSetu AI — Non-Destructive Donor Seeding
 ============================================================
-Ingests Dataset.csv (legacy donor rows) into data/raktasetu.db
-using pandas + sqlite3, WITHOUT touching UI code, FastAPI
-endpoints, or the existing schema.
+Ingests Dataset.csv (legacy donor rows) into the application
+database via the SQLAlchemy engine defined in `app.database`,
+WITHOUT touching UI code, FastAPI endpoints, or the schema.
+
+This script is engine-agnostic: it seeds whatever `DATABASE_URL`
+points at (PostgreSQL on Neon/Supabase in production, SQLite in
+local development). Table creation is handled on import of
+`app.database` (init_sqlite_db -> Base.metadata.create_all).
 
 Design constraints (see task brief):
   * to_sql(if_exists="append")  -> never drops/replaces `donors`,
@@ -21,8 +26,8 @@ Pipeline-health hardening (why this script is not a naive append):
   Boolean and DateTime columns have STRICT result processors, so
   the raw CSV values ("TRUE"/"FALSE" and DD-MM-YYYY dates) would
   crash every read. We normalise them to 0/1/NULL and ISO
-  datetimes before inserting. Column types are read live from
-  PRAGMA table_info -- nothing about the schema is hard-coded.
+  datetimes before inserting. Column types are read live from the
+  engine via SQLAlchemy's inspector -- nothing is hard-coded.
 
 Usage:
     python seed_db.py            # seed (aborts if already seeded)
@@ -35,13 +40,17 @@ import sqlite3
 import datetime
 
 import pandas as pd
+from sqlalchemy import inspect, text
+
+# Importing app.database creates all tables (Base.metadata.create_all)
+# and gives us the configured engine + Donor model.
+from app.database import engine, Donor  # noqa: F401  (Donor re-exported for callers/tests)
 
 # ------------------------------------------------------------
 # Paths (resolved relative to this file so it runs from anywhere)
 # ------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(BASE_DIR, "Dataset.csv")
-DB_PATH = os.path.join(BASE_DIR, "data", "raktasetu.db")
 TABLE = "donors"
 
 # Rows already present beyond this count => we assume the CSV was
@@ -57,31 +66,35 @@ LEGACY_ID_HEX_LEN = 64
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
-def get_table_columns(conn):
+def get_table_columns():
     """Return {column_name: declared_type_upper} for TABLE, excluding
-    the autoincrement primary key `id`."""
-    cur = conn.execute(f"PRAGMA table_info({TABLE})")
+    the autoincrement primary key `id`. Read live from the engine via
+    SQLAlchemy's inspector so nothing about the schema is hard-coded."""
     cols = {}
-    for _cid, name, decl_type, _notnull, _default, pk in cur.fetchall():
-        if pk:  # skip the autoincrement id
+    for col in inspect(engine).get_columns(TABLE):
+        if col.get("primary_key"):  # skip the autoincrement id
             continue
-        cols[name] = (decl_type or "").upper()
+        cols[col["name"]] = str(col["type"]).upper()
     return cols
 
 
 def to_bool_int(series):
-    """Map TRUE/FALSE-ish strings to 1/0, blanks/unknown to None."""
+    """Map TRUE/FALSE-ish strings to Python booleans, blanks/unknown to None.
+
+    Returns native ``True``/``False`` (NOT integers 1/0) so psycopg2 binds them
+    as PostgreSQL ``boolean`` values instead of crashing on an int->bool insert.
+    NaN/Null values become ``None`` (SQL NULL)."""
     truthy = {"true", "1", "t", "yes", "y"}
     falsy = {"false", "0", "f", "no", "n"}
 
     def conv(v):
-        if v is None:
+        if v is None or (isinstance(v, float) and pd.isna(v)) or v is pd.NA:
             return None
         s = str(v).strip().lower()
         if s in truthy:
-            return 1
+            return True
         if s in falsy:
-            return 0
+            return False
         return None  # blank / unparseable -> NULL
 
     return series.map(conv)
@@ -118,13 +131,14 @@ def main():
 
     if not os.path.exists(CSV_PATH):
         sys.exit(f"[ERROR] Dataset.csv not found at {CSV_PATH}")
-    if not os.path.exists(DB_PATH):
-        sys.exit(f"[ERROR] Database not found at {DB_PATH}. Start the app once to create it.")
 
-    conn = sqlite3.connect(DB_PATH)
+    is_sqlite = str(engine.url).startswith("sqlite")
+    print(f"[INFO] Seeding target: {engine.url.render_as_string(hide_password=True)}")
+
+    conn = engine.connect()
     try:
         # --- Pre-flight: existing rows & guard against re-seeding ---
-        existing = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
+        existing = conn.execute(text(f"SELECT COUNT(*) FROM {TABLE}")).scalar()
         print(f"[INFO] Existing rows in '{TABLE}': {existing}")
         if existing > ALREADY_SEEDED_THRESHOLD and not force:
             sys.exit(
@@ -132,13 +146,19 @@ def main():
                 "Looks already seeded. Re-run with --force to append anyway."
             )
 
-        # --- Backup (WAL-safe, via SQLite online backup API) ---
-        backup_path = DB_PATH + ".seedbak"
-        with sqlite3.connect(backup_path) as bak:
-            conn.backup(bak)
-        print(f"[INFO] Backup written: {backup_path}")
+        # --- Backup (SQLite only, via SQLite online backup API) ---
+        # PostgreSQL backups are the provider's responsibility (Neon/Supabase
+        # PITR), so we only take a local file backup when on SQLite.
+        if is_sqlite:
+            db_file = engine.url.database
+            backup_path = db_file + ".seedbak"
+            with sqlite3.connect(db_file) as src, sqlite3.connect(backup_path) as bak:
+                src.backup(bak)
+            print(f"[INFO] Backup written: {backup_path}")
+        else:
+            print("[INFO] Non-SQLite engine detected; skipping local file backup.")
 
-        table_cols = get_table_columns(conn)
+        table_cols = get_table_columns()
 
         # --- Load CSV as raw strings (no pandas type coercion yet) ---
         df = pd.read_csv(CSV_PATH, dtype=str, keep_default_na=False, na_values=[""])
@@ -169,7 +189,7 @@ def main():
 
         # --- Inject safe defaults the pipeline expects ---
         # consent_given: NOT NULL on the model; default True so rows match.
-        df["consent_given"] = 1
+        df["consent_given"] = True
         # status: default "active" where the CSV left it blank.
         if "status" in df.columns:
             df["status"] = df["status"].map(
@@ -202,10 +222,9 @@ def main():
         df = df[[c for c in df.columns if c in table_cols]]
 
         # --- Append (NEVER replace) ---
-        before = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
-        df.to_sql(TABLE, conn, if_exists="append", index=False)
-        conn.commit()
-        after = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
+        before = conn.execute(text(f"SELECT COUNT(*) FROM {TABLE}")).scalar()
+        df.to_sql(TABLE, engine, if_exists="append", index=False)
+        after = conn.execute(text(f"SELECT COUNT(*) FROM {TABLE}")).scalar()
 
         appended = after - before
         print(f"[OK] Appended {appended} rows. '{TABLE}' now has {after} rows "
